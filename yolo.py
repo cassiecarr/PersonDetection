@@ -1,94 +1,202 @@
-from keras import applications
-from keras.preprocessing.image import ImageDataGenerator
-from keras import optimizers
+# REF: This was adapted from https://github.com/experiencor/keras-yolo2
+
+# intialization
 from keras.models import Sequential, Model
-from keras.layers import Dropout, Flatten, Dense, Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization
-from keras.models import load_model
+from keras.layers import Reshape, Activation, Conv2D, Input, MaxPooling2D, BatchNormalization, Flatten, Dense, Lambda
+from keras.layers.advanced_activations import LeakyReLU
+from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
+from keras.optimizers import SGD, Adam, RMSprop
+from keras.layers.merge import concatenate
+import matplotlib.pyplot as plt
+import keras.backend as K
+import tensorflow as tf
+import imgaug as ia
+from tqdm import tqdm
+from imgaug import augmenters as iaa
+import numpy as np
+import pickle
+import os, cv2
+from preprocessing import parse_annotation, BatchGenerator
+from utils import WeightReader, decode_netout, draw_boxes
 
-# path to the model weights files.
-weights_path = 'model-data/yolo.h5'
-top_model_weights_path = 'model-data/my_yolo.h5'
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-# define   
-ann_dir = 'data/ILSVRC/Annotations/DET/train/ILSVRC2014_train_0000/'
-img_dir = 'data/ILSVRC/Data/DET/train/ILSVRC2014_train_0000/'
-
-NORM_H, NORM_W = 416, 416
+# define parameters 
+LABELS = ['person']
+IMG_H, IMG_W = 416, 416
 GRID_H, GRID_W = 13 , 13
-BATCH_SIZE = 8
 BOX = 5
-ORIG_CLASS = 20
+CLASS = len(LABELS)
+CLASS_WEIGHTS = np.ones(CLASS, dtype='float32')
+OBJ_THRESHOLD    = 0.3
+NMS_THRESHOLD    = 0.3
+ANCHORS          = [0.57273, 0.677385, 1.87446, 2.06253, 3.33843, 5.47434, 7.88282, 3.52778, 9.77052, 9.16828]
+
+NO_OBJECT_SCALE  = 1.0
+OBJECT_SCALE     = 5.0
+COORD_SCALE      = 1.0
+CLASS_SCALE      = 1.0
+
+BATCH_SIZE       = 16
+WARM_UP_BATCHES  = 0
+TRUE_BOX_BUFFER  = 50
 
 
-# # dimensions of our images.
-# img_width, img_height = 150, 150
+wt_pathwt_path = 'full_yolo_backend.h5'                      
+train_image_folder = 'data/Train_Images/'
+train_annot_folder = 'data/Train_Annotations/'
+valid_image_folder = 'data/Validation_Images/'
+valid_annot_folder = 'data/Validation_Annotations/'
 
-# train_data_dir = 'cats_and_dogs_small/train'
-# validation_data_dir = 'cats_and_dogs_small/validation'
-# nb_train_samples = 2000
-# nb_validation_samples = 800
-# epochs = 50
-# batch_size = 16
+# the function to implement the orgnization layer (thanks to github.com/allanzelener/YAD2K)
+def space_to_depth_x2(x):
+    return tf.space_to_depth(x, block_size=2)
 
-# import the YOLO model
-yolo_model = load_model(weights_path)
+input_image = Input(shape=(IMG_H, IMG_W, 3))
+true_boxes  = Input(shape=(1, 1, 1, TRUE_BOX_BUFFER , 4))
 
-# remove the last layer from the imported YOLO model
-yolo_model.layers.pop()
-num_frozen_layers = len(yolo_model.layers)
+# Layer 1
+x = Conv2D(32, (3,3), strides=(1,1), padding='same', name='conv_1', use_bias=False)(input_image)
+x = BatchNormalization(name='norm_1')(x)
+x = LeakyReLU(alpha=0.1)(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
 
-# print the summery of the model
-yolo_model.summary()
+# Layer 2
+x = Conv2D(64, (3,3), strides=(1,1), padding='same', name='conv_2', use_bias=False)(x)
+x = BatchNormalization(name='norm_2')(x)
+x = LeakyReLU(alpha=0.1)(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
 
-# build a classifier model to put on top of ybhgthe convolutional model
-top_model = Sequential()
-top_model.add(Conv2D(BOX * (4 + 1 + ORIG_CLASS), (1, 1), strides=(1, 1), kernel_initializer='he_normal'))
-top_model.add(Activation('linear'))
-top_model.add(Reshape((GRID_H, GRID_W, BOX, 4 + 1 + ORIG_CLASS)))
+# Layer 3
+x = Conv2D(128, (3,3), strides=(1,1), padding='same', name='conv_3', use_bias=False)(x)
+x = BatchNormalization(name='norm_3')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-print(yolo_model.output_shape[1])
-# input_shape=yolo_model.output_shape[1:]
+# Layer 4
+x = Conv2D(64, (1,1), strides=(1,1), padding='same', name='conv_4', use_bias=False)(x)
+x = BatchNormalization(name='norm_4')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# new_yolo_model = Model(inputs=yolo_model.input, outputs=top_model(yolo_model.output))
+# Layer 5
+x = Conv2D(128, (3,3), strides=(1,1), padding='same', name='conv_5', use_bias=False)(x)
+x = BatchNormalization(name='norm_5')(x)
+x = LeakyReLU(alpha=0.1)(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
 
-# # set the original layers to ,non-trainable (weights will not be updated)
-# for layer in model.layers[:num_frozen_layers]:
-#     layer.trainable = False
+# Layer 6
+x = Conv2D(256, (3,3), strides=(1,1), padding='same', name='conv_6', use_bias=False)(x)
+x = BatchNormalization(name='norm_6')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# print(num_frozen_layers)
-# print(len(new_yolo_model.layers))
+# Layer 7
+x = Conv2D(128, (1,1), strides=(1,1), padding='same', name='conv_7', use_bias=False)(x)
+x = BatchNormalization(name='norm_7')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# # compile the model with a SGD/momentum optimizer
-# # and a very slow learning rate.
-# model.compile(loss='binary_crossentropy',
-#               optimizer=optimizers.SGD(lr=1e-4, momentum=0.9),
-#               metrics=['accuracy'])
+# Layer 8
+x = Conv2D(256, (3,3), strides=(1,1), padding='same', name='conv_8', use_bias=False)(x)
+x = BatchNormalization(name='norm_8')(x)
+x = LeakyReLU(alpha=0.1)(x)
+x = MaxPooling2D(pool_size=(2, 2))(x)
 
-# # prepare data augmentation configuration
-# train_datagen = ImageDataGenerator(
-#     rescale=1. / 255,
-#     shear_range=0.2,
-#     zoom_range=0.2,
-#     horizontal_flip=True)
+# Layer 9
+x = Conv2D(512, (3,3), strides=(1,1), padding='same', name='conv_9', use_bias=False)(x)
+x = BatchNormalization(name='norm_9')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# test_datagen = ImageDataGenerator(rescale=1. / 255)
+# Layer 10
+x = Conv2D(256, (1,1), strides=(1,1), padding='same', name='conv_10', use_bias=False)(x)
+x = BatchNormalization(name='norm_10')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# train_generator = train_datagen.flow_from_directory(
-#     train_data_dir,
-#     target_size=(img_height, img_width),
-#     batch_size=batch_size,
-#     class_mode='binary')
+# Layer 11
+x = Conv2D(512, (3,3), strides=(1,1), padding='same', name='conv_11', use_bias=False)(x)
+x = BatchNormalization(name='norm_11')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# validation_generator = test_datagen.flow_from_directory(
-#     validation_data_dir,
-#     target_size=(img_height, img_width),
-#     batch_size=batch_size,
-#     class_mode='binary')
+# Layer 12
+x = Conv2D(256, (1,1), strides=(1,1), padding='same', name='conv_12', use_bias=False)(x)
+x = BatchNormalization(name='norm_12')(x)
+x = LeakyReLU(alpha=0.1)(x)
 
-# # fine-tune the model
-# model.fit_generator(
-#     train_generator,
-#     samples_per_epoch=nb_train_samples,
-#     epochs=epochs,
-#     validation_data=validation_generator,
-#     nb_val_samples=nb_validation_samples)
+# Layer 13
+x = Conv2D(512, (3,3), strides=(1,1), padding='same', name='conv_13', use_bias=False)(x)
+x = BatchNormalization(name='norm_13')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+skip_connection = x
+
+x = MaxPooling2D(pool_size=(2, 2))(x)
+
+# Layer 14
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_14', use_bias=False)(x)
+x = BatchNormalization(name='norm_14')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 15
+x = Conv2D(512, (1,1), strides=(1,1), padding='same', name='conv_15', use_bias=False)(x)
+x = BatchNormalization(name='norm_15')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 16
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_16', use_bias=False)(x)
+x = BatchNormalization(name='norm_16')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 17
+x = Conv2D(512, (1,1), strides=(1,1), padding='same', name='conv_17', use_bias=False)(x)
+x = BatchNormalization(name='norm_17')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 18
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_18', use_bias=False)(x)
+x = BatchNormalization(name='norm_18')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 19
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_19', use_bias=False)(x)
+x = BatchNormalization(name='norm_19')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 20
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_20', use_bias=False)(x)
+x = BatchNormalization(name='norm_20')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+# Layer 21
+skip_connection = Conv2D(64, (1,1), strides=(1,1), padding='same', name='conv_21', use_bias=False)(skip_connection)
+skip_connection = BatchNormalization(name='norm_21')(skip_connection)
+skip_connection = LeakyReLU(alpha=0.1)(skip_connection)
+skip_connection = Lambda(space_to_depth_x2)(skip_connection)
+
+x = concatenate([skip_connection, x])
+
+# Layer 22
+x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_22', use_bias=False)(x)
+x = BatchNormalization(name='norm_22')(x)
+x = LeakyReLU(alpha=0.1)(x)
+
+output = x
+
+# small hack to allow true_boxes to be registered when Keras build the model 
+# for more information: https://github.com/fchollet/keras/issues/2790
+output = Lambda(lambda args: args[0])([output, true_boxes])
+
+model = Model([input_image, true_boxes], output)
+
+model.summary()
+
+# load the pretrained weights
+model.load_weights(wt_pathwt_path)
+
+# # Layer 23
+# x = Conv2D(BOX * (4 + 1 + CLASS), (1,1), strides=(1,1), padding='same', name='conv_23')(x)
+# output = Reshape((GRID_H, GRID_W, BOX, 4 + 1 + CLASS))(x)
+
+
+
+
+
+
+
