@@ -18,7 +18,6 @@ import os, cv2
 from preprocessing import parse_annotation, BatchGenerator
 from utils import WeightReader, decode_netout, draw_boxes
 from keras.models import load_model
-from custom_loss import custom_loss
 
 def custom_loss(y_true, y_pred):
     ### Adjust prediction
