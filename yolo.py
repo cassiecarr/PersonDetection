@@ -313,7 +313,7 @@ model.compile(loss='mse', optimizer=optimizer)
 
 model.fit_generator(generator        = train_batch, 
                     steps_per_epoch  = len(train_batch), 
-                    epochs           = 2, 
+                    epochs           = 10, 
                     verbose          = 1,
                     validation_data  = valid_batch,
                     validation_steps = len(valid_batch),
