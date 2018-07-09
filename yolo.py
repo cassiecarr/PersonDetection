@@ -19,6 +19,7 @@ import pickle
 import os, cv2
 from preprocessing import parse_annotation, BatchGenerator
 from utils import WeightReader, decode_netout, draw_boxes
+from keras.models import load_model
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -178,30 +179,64 @@ x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_22', use_bias=
 x = BatchNormalization(name='norm_22')(x)
 x = LeakyReLU(alpha=0.1)(x)
 
-# set model and print summary
-model = Model(input_image, x)
-# model.summary()
+# Layer 23
+x = Conv2D(BOX * (4 + 1 + CLASS), (1,1), strides=(1,1), padding='same', name='conv_23')(x)
+output = Reshape((GRID_H, GRID_W, BOX, 4 + 1 + CLASS))(x)
 
-# load the pretrained weights
-model.load_weights(wt_pathwt_path)
-
-# freeze first 22 layers
-for layer in model.layers:
-    layer.trainable = False
-
-# define top model (new layer to fine tune for new dataset)
-top_model_input = model.output
-top_model = Conv2D(BOX * (4 + 1 + CLASS), (1,1), strides=(1,1), padding='same', kernel_initializer=initializers.RandomNormal(stddev=0.01), name='conv_23')(top_model_input)
-top_model = Reshape((GRID_H, GRID_W, BOX, 4 + 1 + CLASS))(top_model)
 # small hack to allow true_boxes to be registered when Keras build the model 
 # for more information: https://github.com/fchollet/keras/issues/2790
-# output = Lambda(lambda args: args[0])([top_model, true_boxes])
+output = Lambda(lambda args: args[0])([output, true_boxes])
 
-# new_model = Model([input_image, true_boxes], output)
-new_model = Model(input_image, top_model)
+model = Model([input_image, true_boxes], output)
 
+# set model and print summary
+# model.summary()
 
-# new_model.summary()
+# load yolov2 original trained weights
+weight_reader  = WeightReader("yolov2.weights")
+
+weight_reader.reset()
+nb_conv = 23
+
+for i in range(1, nb_conv+1):
+    conv_layer = model.get_layer('conv_' + str(i))
+    
+    if i < nb_conv:
+        norm_layer = model.get_layer('norm_' + str(i))
+        
+        size = np.prod(norm_layer.get_weights()[0].shape)
+
+        beta  = weight_reader.read_bytes(size)
+        gamma = weight_reader.read_bytes(size)
+        mean  = weight_reader.read_bytes(size)
+        var   = weight_reader.read_bytes(size)
+
+        weights = norm_layer.set_weights([gamma, beta, mean, var])       
+        
+    if len(conv_layer.get_weights()) > 1:
+        bias   = weight_reader.read_bytes(np.prod(conv_layer.get_weights()[1].shape))
+        kernel = weight_reader.read_bytes(np.prod(conv_layer.get_weights()[0].shape))
+        kernel = kernel.reshape(list(reversed(conv_layer.get_weights()[0].shape)))
+        kernel = kernel.transpose([2,3,1,0])
+        conv_layer.set_weights([kernel, bias])
+    else:
+        kernel = weight_reader.read_bytes(np.prod(conv_layer.get_weights()[0].shape))
+        kernel = kernel.reshape(list(reversed(conv_layer.get_weights()[0].shape)))
+        kernel = kernel.transpose([2,3,1,0])
+        conv_layer.set_weights([kernel])
+
+# randomize weights for 23rd layer
+layer   = model.layers[-4] # the last convolutional layer
+weights = layer.get_weights()
+
+new_kernel = np.random.normal(size=weights[0].shape)/(GRID_H*GRID_W)
+new_bias   = np.random.normal(size=weights[1].shape)/(GRID_H*GRID_W)
+
+layer.set_weights([new_kernel, new_bias])
+
+# freeze first 22 layers
+for layer in model.layers[:-5]:
+    layer.trainable = False
 
 # prepare the data for training and validation
 
@@ -250,7 +285,6 @@ valid_batch = BatchGenerator(valid_imgs, generator_config, norm=normalize, jitte
 # define parameters for training
 
 # setup callbacks
-
 early_stop  = EarlyStopping(monitor='val_loss', 
                            min_delta=0.001, 
                            patience=3, 
@@ -279,11 +313,12 @@ model.compile(loss='mse', optimizer=optimizer)
 
 model.fit_generator(generator        = train_batch, 
                     steps_per_epoch  = len(train_batch), 
-                    epochs           = 10, 
+                    epochs           = 2, 
                     verbose          = 1,
                     validation_data  = valid_batch,
                     validation_steps = len(valid_batch),
                     callbacks        = [early_stop, checkpoint, tensorboard], 
                     max_queue_size   = 3)
 
-
+model.load_weights("new_model_weights.h5")
+model.save('new_model.h5')

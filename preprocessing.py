@@ -243,15 +243,8 @@ class BatchGenerator(Sequence):
             # increase instance counter in current batch
             instance_count += 1  
 
-        # #print(' new batch created', idx)
-        # print("x")
-        # print(x_batch[0])
-        # print("b")
-        # print(b_batch[0])
-        # print("y")
-        # print(y_batch[0])
-        # return [x_batch, b_batch], y_batch
-        return x_batch, y_batch
+        return [x_batch, b_batch], y_batch
+        # return x_batch, y_batch
 
     def on_epoch_end(self):
         if self.shuffle: np.random.shuffle(self.images)
