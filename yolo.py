@@ -20,6 +20,7 @@ import os, cv2
 from preprocessing import parse_annotation, BatchGenerator
 from utils import WeightReader, decode_netout, draw_boxes
 from keras.models import load_model
+from custom_loss import custom_loss
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -309,7 +310,7 @@ optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
 #optimizer = SGD(lr=1e-4, decay=0.0005, momentum=0.9)
 #optimizer = RMSprop(lr=1e-4, rho=0.9, epsilon=1e-08, decay=0.0)
 
-model.compile(loss='mse', optimizer=optimizer)
+model.compile(loss=custom_loss, optimizer=optimizer)
 
 model.fit_generator(generator        = train_batch, 
                     steps_per_epoch  = len(train_batch), 
