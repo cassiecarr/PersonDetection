@@ -7,6 +7,7 @@ from keras.layers.advanced_activations import LeakyReLU
 from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from keras.optimizers import SGD, Adam, RMSprop
 from keras.layers.merge import concatenate
+from keras import initializers
 import matplotlib.pyplot as plt
 import keras.backend as K
 import tensorflow as tf
@@ -177,26 +178,112 @@ x = Conv2D(1024, (3,3), strides=(1,1), padding='same', name='conv_22', use_bias=
 x = BatchNormalization(name='norm_22')(x)
 x = LeakyReLU(alpha=0.1)(x)
 
-output = x
-
-# small hack to allow true_boxes to be registered when Keras build the model 
-# for more information: https://github.com/fchollet/keras/issues/2790
-output = Lambda(lambda args: args[0])([output, true_boxes])
-
-model = Model([input_image, true_boxes], output)
-
-model.summary()
+# set model and print summary
+model = Model(input_image, x)
+# model.summary()
 
 # load the pretrained weights
 model.load_weights(wt_pathwt_path)
 
-# # Layer 23
-# x = Conv2D(BOX * (4 + 1 + CLASS), (1,1), strides=(1,1), padding='same', name='conv_23')(x)
-# output = Reshape((GRID_H, GRID_W, BOX, 4 + 1 + CLASS))(x)
+# freeze first 22 layers
+for layer in model.layers:
+    layer.trainable = False
+
+# define top model (new layer to fine tune for new dataset)
+top_model_input = model.output
+top_model = Conv2D(BOX * (4 + 1 + CLASS), (1,1), strides=(1,1), padding='same', kernel_initializer=initializers.RandomNormal(stddev=0.01), name='conv_23')(top_model_input)
+top_model = Reshape((GRID_H, GRID_W, BOX, 4 + 1 + CLASS))(top_model)
+# small hack to allow true_boxes to be registered when Keras build the model 
+# for more information: https://github.com/fchollet/keras/issues/2790
+# output = Lambda(lambda args: args[0])([top_model, true_boxes])
+
+# new_model = Model([input_image, true_boxes], output)
+new_model = Model(input_image, top_model)
 
 
+# new_model.summary()
+
+# prepare the data for training and validation
+
+# define generator config
+generator_config = {
+    'IMAGE_H'         : IMG_H, 
+    'IMAGE_W'         : IMG_W,
+    'GRID_H'          : GRID_H,  
+    'GRID_W'          : GRID_W,
+    'BOX'             : BOX,
+    'LABELS'          : LABELS,
+    'CLASS'           : len(LABELS),
+    'ANCHORS'         : ANCHORS,
+    'BATCH_SIZE'      : BATCH_SIZE,
+    'TRUE_BOX_BUFFER' : 50,
+}
+
+# define normalize for images
+def normalize(image):
+    return image / 255.
+
+# define the image and label datasets for training
+train_imgs, train_labels = parse_annotation(train_annot_folder, train_image_folder, LABELS)
+
+## write parsed annotations to pickle for fast retrieval next time
+# with open('train_imgs', 'wb') as fp:
+#    pickle.dump(train_imgs, fp)
+### read saved pickle of parsed annotations
+#with open ('train_imgs', 'rb') as fp:
+#    train_imgs = pickle.load(fp)
+
+train_batch = BatchGenerator(train_imgs, generator_config, norm=normalize)
+
+# define the image and label datasets for training
+valid_imgs, valid_labels = parse_annotation(valid_annot_folder, valid_image_folder, labels=LABELS)
+
+## write parsed annotations to pickle for fast retrieval next time
+# with open('valid_imgs', 'wb') as fp:
+#    pickle.dump(valid_imgs, fp)
+### read saved pickle of parsed annotations
+#with open ('valid_imgs', 'rb') as fp:
+#    valid_imgs = pickle.load(fp)
+
+valid_batch = BatchGenerator(valid_imgs, generator_config, norm=normalize, jitter=False)
+
+# define parameters for training
+
+# setup callbacks
+
+early_stop  = EarlyStopping(monitor='val_loss', 
+                           min_delta=0.001, 
+                           patience=3, 
+                           mode='min', 
+                           verbose=1)
+
+checkpoint = ModelCheckpoint('new_model_weights.h5', 
+                             monitor='val_loss', 
+                             verbose=1, 
+                             save_best_only=True, 
+                             mode='min', 
+                             period=1)
+
+tb_counter  = len([log for log in os.listdir(os.path.expanduser('./logs/')) if 'new_model_' in log]) + 1
+tensorboard = TensorBoard(log_dir=os.path.expanduser('./logs/') + 'new_model_' + '_' + str(tb_counter), 
+                          histogram_freq=0, 
+                          write_graph=True, 
+                          write_images=False)
 
 
+optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+#optimizer = SGD(lr=1e-4, decay=0.0005, momentum=0.9)
+#optimizer = RMSprop(lr=1e-4, rho=0.9, epsilon=1e-08, decay=0.0)
 
+model.compile(loss='mse', optimizer=optimizer)
+
+model.fit_generator(generator        = train_batch, 
+                    steps_per_epoch  = len(train_batch), 
+                    epochs           = 10, 
+                    verbose          = 1,
+                    validation_data  = valid_batch,
+                    validation_steps = len(valid_batch),
+                    callbacks        = [early_stop, checkpoint, tensorboard], 
+                    max_queue_size   = 3)
 
 

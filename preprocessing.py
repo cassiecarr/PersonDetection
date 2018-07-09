@@ -168,9 +168,9 @@ class BatchGenerator(Sequence):
 
         instance_count = 0
 
-        x_batch = np.zeros((r_bound - l_bound, self.config['IMAGE_H'], self.config['IMAGE_W'], 3))                         # input images
+        x_batch = np.zeros((r_bound - l_bound, self.config['IMAGE_H'], self.config['IMAGE_W'], 3))       # input images
         b_batch = np.zeros((r_bound - l_bound, 1     , 1     , 1    ,  self.config['TRUE_BOX_BUFFER'], 4))   # list of self.config['TRUE_self.config['BOX']_BUFFER'] GT boxes
-        y_batch = np.zeros((r_bound - l_bound, self.config['GRID_H'],  self.config['GRID_W'], self.config['BOX'], 4+1+len(self.config['LABELS'])))                # desired network output
+        y_batch = np.zeros((r_bound - l_bound, self.config['GRID_H'],  self.config['GRID_W'], self.config['BOX'], 4+1+len(self.config['LABELS'])))       # desired network output
 
         for train_instance in self.images[l_bound:r_bound]:
             # augment input image and fix object's position and size
@@ -243,9 +243,15 @@ class BatchGenerator(Sequence):
             # increase instance counter in current batch
             instance_count += 1  
 
-        #print(' new batch created', idx)
-
-        return [x_batch, b_batch], y_batch
+        # #print(' new batch created', idx)
+        # print("x")
+        # print(x_batch[0])
+        # print("b")
+        # print(b_batch[0])
+        # print("y")
+        # print(y_batch[0])
+        # return [x_batch, b_batch], y_batch
+        return x_batch, y_batch
 
     def on_epoch_end(self):
         if self.shuffle: np.random.shuffle(self.images)
