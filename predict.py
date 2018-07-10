@@ -70,5 +70,5 @@ boxes = decode_netout(netout[0],
             
 image = draw_boxes(image, boxes, labels=LABELS)
 
-cv2.imwrite('data/test_predicted_img/000229.jpg',image)
+cv2.imwrite('data/test_predicted_img/000229_new.jpg',image)
 
