@@ -52,23 +52,26 @@ model = load_model('new_model_3.h5', custom_objects={
 })
 
 # load image
-image = cv2.imread('data/test_img/000229.jpg')
-dummy_array = np.zeros((1,1,1,1,TRUE_BOX_BUFFER,4))
+folder_path = "data/test_img/"
+save_path = "data/test_predicted_img/" 
+for fn in os.listdir(folder_path):
+    full_folder_path = folder_path + fn
+    image = cv2.imread(full_folder_path)
+    dummy_array = np.zeros((1,1,1,1,TRUE_BOX_BUFFER,4))
+    input_image = cv2.resize(image, (416, 416))
+    input_image = input_image / 255.
+    input_image = input_image[:,:,::-1]
+    input_image = np.expand_dims(input_image, 0)
 
-input_image = cv2.resize(image, (416, 416))
-input_image = input_image / 255.
-input_image = input_image[:,:,::-1]
-input_image = np.expand_dims(input_image, 0)
+    netout = model.predict([input_image, dummy_array])
 
-netout = model.predict([input_image, dummy_array])
+    boxes = decode_netout(netout[0], 
+	                      obj_threshold=OBJ_THRESHOLD,
+	                      nms_threshold=NMS_THRESHOLD,
+	                      anchors=ANCHORS, 
+	                      nb_class=CLASS)
 
-boxes = decode_netout(netout[0], 
-                      obj_threshold=OBJ_THRESHOLD,
-                      nms_threshold=NMS_THRESHOLD,
-                      anchors=ANCHORS, 
-                      nb_class=CLASS)
-            
-image = draw_boxes(image, boxes, labels=LABELS)
-
-cv2.imwrite('data/test_predicted_img/000229_new.jpg',image)
+    image = draw_boxes(image, boxes, labels=LABELS)
+    full_save_path = save_path + fn
+    cv2.imwrite(full_save_path,image)
 

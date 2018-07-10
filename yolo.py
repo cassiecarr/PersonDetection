@@ -284,6 +284,7 @@ valid_imgs, valid_labels = parse_annotation(valid_annot_folder, valid_image_fold
 
 valid_batch = BatchGenerator(valid_imgs, generator_config, norm=normalize, jitter=False)
 
+
 # define parameters for training
 
 # setup callbacks
@@ -308,16 +309,16 @@ tensorboard = TensorBoard(log_dir=os.path.expanduser('./logs/') + 'new_model_' +
 
 
 # set optimizer
-optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+# optimizer = Adam(lr=0.5e-4, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
 #optimizer = SGD(lr=1e-4, decay=0.0005, momentum=0.9)
-#optimizer = RMSprop(lr=1e-4, rho=0.9, epsilon=1e-08, decay=0.0)
+optimizer = RMSprop(lr=1e-4, rho=0.9, epsilon=1e-08, decay=0.0)
 
 # complie model
 model.compile(loss=custom_loss, optimizer=optimizer)
 
 model.fit_generator(generator        = train_batch, 
                     steps_per_epoch  = len(train_batch), 
-                    epochs           = 10, 
+                    epochs           = 20, 
                     verbose          = 1,
                     validation_data  = valid_batch,
                     validation_steps = len(valid_batch),
