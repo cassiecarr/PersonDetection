@@ -470,7 +470,7 @@ model.compile(loss=custom_loss, optimizer=optimizer)
 
 model.fit_generator(generator        = train_batch, 
                     steps_per_epoch  = len(train_batch), 
-                    epochs           = 10, 
+                    epochs           = 50, 
                     verbose          = 1,
                     validation_data  = valid_batch,
                     validation_steps = len(valid_batch),
