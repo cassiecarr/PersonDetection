@@ -46,7 +46,7 @@ input_image = my_parameters.input_image
 true_boxes  = my_parameters.true_boxes
 
 # load new model from training
-model = load_model('new_model_3.h5', custom_objects={
+model = load_model('new_model_6.h5', custom_objects={
     	'tf':tf,
     	'custom_loss':custom_loss
 })
@@ -75,3 +75,41 @@ for fn in os.listdir(folder_path):
     full_save_path = save_path + fn
     cv2.imwrite(full_save_path,image)
 
+# load video
+video_inp = 'data/videos/Street - 5025.mp4'
+video_out = 'data/videos/Street - 5025_bbox.mp4'
+
+dummy_array = np.zeros((1,1,1,1,TRUE_BOX_BUFFER,4))
+
+video_reader = cv2.VideoCapture(video_inp)
+
+nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
+frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+
+video_writer = cv2.VideoWriter(video_out,
+                               cv2.VideoWriter_fourcc(*'XVID'), 
+                               50.0, 
+                               (frame_w, frame_h))
+
+for i in tqdm(range(nb_frames)):
+    ret, image = video_reader.read()
+    
+    input_image = cv2.resize(image, (416, 416))
+    input_image = input_image / 255.
+    input_image = input_image[:,:,::-1]
+    input_image = np.expand_dims(input_image, 0)
+
+    netout = model.predict([input_image, dummy_array])
+
+    boxes = decode_netout(netout[0], 
+                          obj_threshold=0.3,
+                          nms_threshold=NMS_THRESHOLD,
+                          anchors=ANCHORS, 
+                          nb_class=CLASS)
+    image = draw_boxes(image, boxes, labels=LABELS)
+
+    video_writer.write(np.uint8(image))
+    
+video_reader.release()
+video_writer.release()

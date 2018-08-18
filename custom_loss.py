@@ -1,3 +1,5 @@
+# REF: This was adapted from https://github.com/experiencor/keras-yolo2
+
 import tensorflow as tf
 import numpy as np
 from config import my_parameters
