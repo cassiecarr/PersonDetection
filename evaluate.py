@@ -189,10 +189,7 @@ generator_config = {
     'BATCH_SIZE'      : BATCH_SIZE,
     'TRUE_BOX_BUFFER' : TRUE_BOX_BUFFER,
 }
-# define paths for training
-wt_pathwt_path = 'full_yolo_backend.h5'                      
-train_image_folder = 'data/Train_Images/'
-train_annot_folder = 'data/Train_Annotations/'
+# define paths for training                     
 valid_image_folder = 'data/Validation_Images/'
 valid_annot_folder = 'data/Validation_Annotations/'
 
