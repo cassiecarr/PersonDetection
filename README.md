@@ -59,7 +59,7 @@ opencv
 
 **evaluate.py** - This file is for calculating the mean average precision on the validation dataset after the model has been developed. You must define the path to the validation images and annotation files. You must also define the name and path for the newly tranined model which you are evaluating. 
 
-**predict.py** - This file is for implementing the model on a new image and / or video. You must define the name and path for the newly trained model and also the path to the image and / or video you are looking to predict, in addition to where you would like to save the predicted photo and / or video. Some sample data can be found in the [sample_data](https://github.com/cassiecarr/PersonDetection/tree/master/sample-data) folder of this repository. You can also download the model I developed [here](https://s3.amazonaws.com/persondetectionyolomodel/new_model_6.h5)
+**predict.py** - This file is for implementing the model on a new image and / or video. You must define the name and path for the newly trained model and also the path to the image and / or video you are looking to predict, in addition to where you would like to save the predicted photo and / or video. Some sample data can be found in the [sample_data](https://github.com/cassiecarr/PersonDetection/tree/master/sample-data) folder of this repository. You can also download the model I developed [here](https://s3.amazonaws.com/persondetectionyolomodel/new_model_6.h5).
 
 **custom_loss.py, preprocess.py, utils.py** - Supplemental files for the loss function, preprocessing functions, and bounding box functions.
 
