@@ -53,7 +53,7 @@ opencv
 
 ### Project Files
 
-**config.py** - This file contains all parameters for training, make edit as necessary. [More information available here](https://github.com/experiencor/keras-yolo2).
+**config.py** - This file contains all parameters for training, make edits as necessary. [More information available here](https://github.com/experiencor/keras-yolo2).
 
 **yolo.py** - This file is for training the Yolo model in keras. You must define the paths for the training and validation images and annotation files (see Dataset section above). You must also define the path to the original YOLO weights, which can be downloaded [here](https://github.com/rodrigo2019/keras-yolo2/releases/tag/pre-trained-weights). You also need to define which file you would like to save the newly trained model weights to. 
 
